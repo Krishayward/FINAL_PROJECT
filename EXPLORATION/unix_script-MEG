@@ -1,0 +1,122 @@
+#Navigate to the directly where the data file was downloaded. In my case it's my dektop
+cd Desktop
+
+#Ensure the file is there
+ls
+
+#Look at the data headers
+head -1 CSVFile_2019-10-07T16_29_41\ \(2\).csv 
+# Output: DataValue,LocalDateTime,UTCOffset,SiteCode,VariableCode,SourceID,QualityControlLevelCode
+
+#Count the number of data points in our data file
+wc -l CSVFile_2019-10-07T16_29_41\ \(2\).csv
+# Output: 1654167
+#We know it is one less than this number because of the header row
+
+
+#display all of the unique variable names
+cut -d',' -f5 CSVFile_2019-10-07T16_29_41\ \(2\).csv | sort | uniq
+
+# Output: 
+#AirTmp_10minAvg_1.5m
+#BGAPCRFU_10minAvg_1m
+#BGAPC_10minAvg_1m
+#BarPre_10min_1.5m
+#ChlRFU_10minAvg_1m
+#Chla_10minAvg_1m
+#Cond25_10minAvg_1m
+#Cond_10minAvg_1m
+#DLRad_10min
+#DLRad_10minAvg
+#DOconc_10minAvg_1m
+#DOsat_10minAvg_1m
+#DSRad_10min
+#DSRad_10minAvg
+#Hail_10minAccum_1.5m
+#Hail_10minMax_1.5m
+#PPInt_10minMax_1.5m
+#Precip_10minTotal_1.5m
+#RelHum_10min_1.5m
+#VariableCode
+#WatTmp_10minAvg_0.1m
+#WatTmp_10minAvg_0.35m
+#WatTmp_10minAvg_0.6m
+#WatTmp_10minAvg_0.85m
+#WatTmp_10minAvg_1.1m
+#WatTmp_10minAvg_1.35m
+#WatTmp_10minAvg_1.6m
+#WatTmp_10minAvg_1.85m
+#WatTmp_10minAvg_1m
+#WatTmp_10minAvg_2.1m
+#WatTmp_10minAvg_2.35m
+#WatTmp_10minAvg_2.6m
+#WatTmp_10minAvg_2.85m
+#WatTmp_10minAvg_3.1m
+#WatTmp_10minAvg_3.35m
+#WatTmp_10minAvg_3.6m
+#WatTmp_10minAvg_3.85m
+#WatTmp_10minAvg_4.1m
+#WatTmp_10minAvg_4.35m
+#WatTmp_10minAvg_4.6m
+#WatTmp_10minAvg_4.85m
+#WatTmp_10minAvg_5.1m
+#WatTmp_10minAvg_5.35m
+#WatTmp_10minAvg_5.6m
+#WatTmp_10minAvg_5.85m
+#WatTmp_10minAvg_6.1m
+#WatTmp_10minAvg_6.35m
+#WatTmp_10minAvg_6.6m
+#WatTmp_10minAvg_6.85m
+#WatTmp_10minAvg_7.1m
+#WatTmp_10minAvg_7.35m
+#WatTmp_10minAvg_7.6m
+#WatTmp_10minAvg_7.85m
+#WatTmp_10minAvg_8.1m
+#WatTmp_10minAvg_8.35m
+#WatTmp_10minAvg_8.6m
+#WatTmp_10minAvg_8.85m
+#WatTmp_10minAvg_9.1m
+#WatTmp_10minAvg_9.35m
+#WatTmp_10minAvg_9.6m
+#WatTmp_10minAvg_9.85m
+#WndDir_10minAvg_1.5m
+#WndSpd_10minAvg_1.5m
+#WndSpd_10minMax_1.5m
+#pH_10minAvg_1m
+
+#We only want to include fluorescence, conductivity, pH, surface temperature, chlorophyll a, and radiance in our analysis, while still keeping the column names
+
+#create a new file with only the rows that have the above mentioned variables
+cat CSVFile_2019-10-07T16_29_41\ \(2\).csv | egrep "^Chla_10minAvg_1m|Cond_10minAvg_1m|pH_10minAvg_1m|DSRad_10minAvg|ChlRFU_10minAvg_1m|WatTmp_10minAvg_0.1m|VariableCode" > MB_data.csv
+
+#count the number of data points
+wc - l MB_data.csv
+# Output: 125562 
+#We know it is one less than this number because of the header row
+
+#Check the file
+head -30 MB_data.csv
+
+#There are values of 0, which we do not want
+#remove any data points of zero and feed into new file
+awk -F "," '$1 != 0' MB_data.csv > MB_data2.csv
+
+#check if the zeros have been successfully removed
+head -30 MB_data2.csv
+
+#The zeros have been removed successfully
+
+#count the number of data points left after removal of 0's
+wc -l MB_data2.csv 
+# Output: 125402
+#We know it is one less than this number because of the header row
+
+#We want to move the variable names to column 1 for ease of use, and delete columns we don't need
+awk 'BEGIN {FS=","; OFS=","} {print $5, $1, $2}' MB_data2.csv > MB_data3.csv
+
+#make sure no data points got deleted by counting them again - it should be the same value as the last file
+wc -l MB_data3.csv
+# Output: 125402
+#We know it is one less than this number because of the header row
+
+#We now have a cleaned data file
