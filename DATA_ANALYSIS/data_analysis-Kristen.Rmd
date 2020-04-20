@@ -1,0 +1,153 @@
+---
+title: "data_analysis-Kristen"
+output: html_notebook
+---
+
+**1.Read the output from Eric's section into the current working directory:**
+```{r}
+dat<- read.csv("step2_output_ERIC.csv", header = T)
+```
+
+
+**2. Recheck the data, recode as necessary:**
+```{r}
+summary(dat) #quick summary of the data 
+dat$LocalDateTime <- as.character(dat$LocalDateTime) #recode LocalDateTime as character variable 
+```
+
+**3. Subset data to ease coding for model selection:**
+```{r}
+chla<- dat[which(dat$VariableCode == "Chla_10minAvg_1m"), names(dat) %in% c("trans_varb")]
+fluor<- dat[which(dat$VariableCode == "ChlRFU_10minAvg_1m"), names(dat) %in% c("trans_varb")]
+cond<- dat[which(dat$VariableCode == "Cond_10minAvg_1m"), names(dat) %in% c("trans_varb")]
+rad<- dat[which(dat$VariableCode == "DSRad_10minAvg"), names(dat) %in% c("trans_varb")]
+pH<- dat[which(dat$VariableCode == "pH_10minAvg_1m"), names(dat) %in% c("trans_varb")]
+temp<- dat[which(dat$VariableCode == "WatTmp_10minAvg_0.1m"), names(dat) %in% c("trans_varb")]
+
+mdat<- data.frame(chla,fluor,cond,rad,pH,temp) 
+```
+
+**4. Perform backwards selection - start with full model & eliminate one predictor at a time chosen as predictor with highest P value:**
+```{r}
+library(car)
+#RUN THE FULL MODEL 
+summary(full<- lm(chla ~ fluor + cond + pH + temp + rad, data = mdat))
+#multiple R2 = 0.46 = explains 46% variation in log transformed chlorophyll a 
+
+#i don't think we really need the summary function from here on - save on code 
+
+Anova(full)
+#all have very, very small p values = all significant = suggests full model is the minimum adequate model
+
+#let's try removing the variable with the largest p value just to make sure
+summary(no_rad<- lm(chla ~ fluor + cond + pH + temp, data = mdat))
+anova(no_rad, full)
+#p value is v tiny = suggests significant difference in explanatory power of two models thus leave all variables in model
+
+#thus minimum adequate model:
+mam<- lm(chla ~ fluor + cond + pH + temp + rad, data = mdat)
+```
+
+**5. Determine the relative strength of the predictors in the model by rerunning it to calculate standardized partial regression coefficients:**
+```{r}
+summary(smam<- lm(scale(chla) ~ scale(fluor) + scale(cond) + scale(pH) + scale(temp) + scale(rad), data = mdat))
+```
+We've calculated standardized partial regression coefficients, so all the predictor variables are now on the same scale and we can compare their relative strength in the model. The order of the predictor variables from most to least strength in the model is: conductivity (+ve relationship), temperature (-ve relationship), pH (-ve relationship), radiance (-ve relationship), and fluorescence (-ve relationship).
+
+**6. Double check/confirm minimum adequate model with AICc model selection:**
+```{r}
+library(MuMIn) #load the required package
+options(na.action = "na.fail") #don't use rows with missing data
+
+dd<- dredge(full, extra = "R^2", beta = "sd")
+print(dd, abrev.names = FALSE)
+```
+Based on the output above, the minimum adequate model (top model) is model #32. This model is the same model we came to with backwards model selection i.e. the full model. No other models are within a delta value of 2 (our cutoff for where the model is significantly less suitable for explaining the data). There is a 100% chance that the top model is the best model of the ones considered. 
+
+**7. Check assumptions of normality & homoscedacity using a quick 1-function graphical analysis:**
+```{r}
+library(ggfortify)
+autoplot(mam, c(1,2,3,6))
+```
+For our minimum adequate model, there appears to be deviation from normality towards the extremes of the residuals, and residuals seem to fan out a bit as fitted values decrease. Thus, there appears to be some deviation from the assumptions of normality and homoscedacity.For the residuals vs. fitted values plot, there seems to be a pattern, indicating there may be a bit of non-independence among residuals. However, once we remove the outliers (below) and rerun this code, the pattern for the residuals vs. fitted values plot seems to level out & the datapoints pull closer to the line in the Normal Q-Q plot. Based on this, I would conclude that there is little concern that we have violated the assumptions of normality and homoscedacity.
+
+**8. Check for outliers:**
+```{r fig.width=12, fig.height = 10}
+influenceIndexPlot(mam)
+```
+There seems to be quite a few values over 2 studentized residuals - we may need to be cautious when interpreting results if these values are exhibiting undue influence. No values have a cook's distance over 1, suggesting there is little concern that any point is having undue influence. We consider a point to have high leverage if it demonstrates a hat value 3x the mean of the rest of the points. It seems like there a quite a few points towards the start of the dataset for some reason that may meet this criteria. 
+
+Let's take a look:
+```{r}
+#calculate whether hat values 3x for point 10 - modify code for each point you check
+hatvalues(mam)[10]
+mean(hatvalues(mam)[c(1:9,11:13849)])*3 #yes, higher than 3X = remove point 
+
+#remove all points with 3x hat values of the rest - points between 1 & 90 giving odd hat values thus remove
+mdat<- mdat[-c(1:90),]
+#NOW GO BACK & RERUN MODEL SELECTION & ASSUMPTION CHECKS WITH NEW MDAT
+```
+
+**9. Create the output csv file for graphing + code for parameters that Meghan will need:**
+```{r}
+write.csv(mdat,"step3_output_KRISTEN.csv", row.names = T)
+
+#Meghan will need standardized partial regression coefficients from AICc models selection:
+dd[1,2:6]
+```
+
+**10. Addressing second hypothesis by plotting variables over time:**
+```{r}
+library(ggplot2)
+library(dplyr)
+
+#standardize the predictor variables
+s_chla<- mdat$chla - mean(mdat$chla)
+s_fluor<- mdat$fluor - mean(mdat$fluor) 
+s_cond<- mdat$cond - mean(mdat$cond)
+s_rad<- mdat$rad - mean(mdat$rad) 
+s_pH<- mdat$pH - mean(mdat$pH) 
+s_temp<- mdat$temp - mean(mdat$temp) 
+
+#time variable - all have same timestamps so can use same one
+time<- dat[which(dat$VariableCode == "Chla_10minAvg_1m"), names(dat) %in% c("LocalDateTime")]
+time<- time[91:13849]
+
+#create new dataset with variables 
+hyp2dat<- mdat %>% mutate(time = time,
+                          s_chla = s_chla,
+                          s_fluor = s_fluor,
+                          s_cond = s_cond,
+                          s_rad = s_rad,
+                          s_pH = s_pH,
+                          s_temp = s_temp) #make sure to use the second mdat 
+
+#load my custom theme
+coolthemeiscool<- theme(
+  legend.position = c(.98,1),
+  legend.text = element_text(size = 12),
+  legend.justification = c("right","top"),
+  legend.key = element_rect(fill = "white", color = NA),
+  axis.text.x= element_text(size=12, colour="black", face= "bold"),
+  axis.text.y= element_text(size=12, colour="black", face= "bold"),
+  axis.title.x= element_text(size=14, colour="black", vjust= +0.5, face = "bold"),
+  axis.title.y= element_text(size=14, colour="black", vjust=+0.5, face = "bold"),
+  panel.background= element_rect(fill="white", colour=NULL),
+  axis.line= element_line(colour="black", size=0.5),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()
+  )
+
+#create the graph - only using one predictor variable here, but switch out to look through each
+ggplot(hyp2dat, aes(x = time, group = 1))+
+   geom_line(aes(y = s_chla, colour = "olivedrab4"))+
+   geom_line(aes(y = s_fluor, colour = "dark slate blue"))+
+   scale_x_discrete(name = "Time (10 min intervals)", labels = NULL)+
+   scale_y_continuous(name = "Standardized variable")+
+   scale_colour_manual(name = "", labels = c("chlorophyll a", "fluorescence"), 
+                         values = c("olivedrab4","dark slate blue"))+
+   coolthemeiscool
+```
+
+
+  
